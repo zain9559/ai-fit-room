@@ -1,5 +1,9 @@
 # AI Fit Room (Chrome MV3 擴充功能)
 
+https://github.com/user-attachments/assets/2459b428-60e3-416b-8d7d-9cc1c6eb86bf
+
+
+
 AI Fit Room 是一款基於 Chrome Extensions Manifest V3 的側邊欄工具。使用者可在側邊欄上傳基底圖片，於任意網頁對圖片按右鍵即自動將其載入為覆蓋圖，並與 Google Gemini 影像模型整合，產生合成結果。支援 OS 原生剪貼簿與跨分頁共享同一個 side panel。
 
 ## 功能特性
