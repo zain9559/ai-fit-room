@@ -187,7 +187,7 @@ async function render() {
       if (hasBase && hasOverlay && hasApi) {
         composeImages();
       }
-    } catch {}
+    } catch { }
   }
   copyContextBase64Btn.addEventListener('click', async () => {
     const src = ctxImportedImg.getAttribute('src') || '';
@@ -234,6 +234,7 @@ document.addEventListener('DOMContentLoaded', render);
 const apiEndpointEl = document.getElementById('api-endpoint');
 const apiKeyEl = document.getElementById('api-key');
 const composePromptEl = document.getElementById('compose-prompt');
+const promptPresetEl = document.getElementById('prompt-preset');
 const saveApiBtn = document.getElementById('save-api');
 const composeBtn = document.getElementById('compose-btn');
 const composeStatus = document.getElementById('compose-status');
@@ -256,6 +257,69 @@ function dataUrlToBlob(dataUrl) {
 }
 
 
+// 預設「試衣間」情境模板
+const PROMPT_PRESETS = [
+  {
+    id: 'basic-compose',
+    label: '基本合成（自然貼合）',
+    text:
+      '將第二張圖片的主體自然合成到第一張基底圖片上。請自動去背、對齊比例與角度，避免變形；匹配光源方向、色溫與對比，生成合理陰影與接縫；邊緣平滑無鋸齒，避免重影或殘影，整體看起來真實自然。'
+  },
+  {
+    id: 'tshirt',
+    label: '換上 T 恤',
+    text:
+      '將第二張圖中的上衣自然合成到我身上，視需要去背。請對齊肩線與頸口，保持布料皺褶與自然垂墜；匹配光源方向、色溫與對比；邊緣平滑無鋸齒，避免遮蓋臉與頭髮。畫面要真實、無違和。'
+  },
+  {
+    id: 'jacket',
+    label: '換上外套/夾克',
+    text:
+      '將第二張圖中的外套合成到我身上，對齊肩膀與胸前位置，保持立體感與開合自然。調整陰影與反光，避免穿模；與背景光線一致，邊緣自然融合。'
+  },
+  {
+    id: 'dress',
+    label: '換上下裝',
+    text:
+      '將第二張圖中的下裝合成到我身上，依照身形比例微調長度與腰線，保持布料紋理與皺褶；光影一致、邊緣平滑，避免遮擋不該遮擋的部位。'
+  },
+  {
+    id: 'sunglasses',
+    label: '試戴墨鏡',
+    text:
+      '將第二張圖中的墨鏡對位到我臉部，準確對齊鼻樑與眼睛位置，控制比例與角度；鏡片反光與陰影合理，邊緣平滑，避免遮蓋眉毛與髮絲的不自然重疊。'
+  },
+  {
+    id: 'hat',
+    label: '試戴帽子',
+    text:
+      '將第二張圖中的帽子戴到我頭部，對齊頭頂與前額位置，調整透視與比例；與髮絲自然相交，邊緣無鋸齒；匹配場景光影，生成合理陰影。'
+  },
+  {
+    id: 'indoor-soft',
+    label: '室內試衣（柔光）',
+    text:
+      '請以柔和室內光線風格進行合成：光線散射、色溫偏暖、陰影柔和。確保第二張圖與基底圖之光影一致、銜接自然，畫面整體協調。'
+  },
+  {
+    id: 'outdoor-sunny',
+    label: '戶外街拍（陽光）',
+    text:
+      '請以戶外晴天街拍風格進行合成：光線方向明確、對比略高、陰影清晰；匹配日光色溫與環境反光，使畫面自然可信。'
+  }
+];
+
+// 將模板選項填入下拉選單
+if (promptPresetEl) {
+  for (const p of PROMPT_PRESETS) {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.label;
+    promptPresetEl.appendChild(opt);
+  }
+}
+
+
 // Load API config
 {
   const { apiConfig } = await chrome.storage.local.get('apiConfig');
@@ -263,6 +327,14 @@ function dataUrlToBlob(dataUrl) {
     if (apiConfig.endpoint) apiEndpointEl.value = apiConfig.endpoint;
     if (apiConfig.key) apiKeyEl.value = apiConfig.key;
     if (apiConfig.prompt) composePromptEl.value = apiConfig.prompt;
+    if (promptPresetEl) {
+      const sel = apiConfig.promptPreset || 'custom';
+      promptPresetEl.value = sel;
+      const found = PROMPT_PRESETS.find((p) => p.id === sel);
+      if (found && (!apiConfig.prompt || apiConfig.prompt === found.text)) {
+        composePromptEl.value = found.text;
+      }
+    }
   }
 }
 
@@ -270,9 +342,40 @@ saveApiBtn.addEventListener('click', async () => {
   const endpoint = apiEndpointEl.value.trim();
   const key = apiKeyEl.value.trim();
   const prompt = composePromptEl.value.trim();
-  await chrome.storage.local.set({ apiConfig: { endpoint, key, prompt } });
+  const promptPreset = promptPresetEl ? promptPresetEl.value : 'custom';
+  await chrome.storage.local.set({ apiConfig: { endpoint, key, prompt, promptPreset } });
   composeStatus.textContent = '設定已儲存';
   setTimeout(() => (composeStatus.textContent = ''), 1200);
+});
+
+// Handle preset selection change
+if (promptPresetEl) {
+  promptPresetEl.addEventListener('change', async () => {
+    const id = promptPresetEl.value;
+    const { apiConfig } = await chrome.storage.local.get('apiConfig');
+    if (id === 'custom') {
+      await chrome.storage.local.set({ apiConfig: { ...(apiConfig || {}), promptPreset: 'custom', prompt: composePromptEl.value } });
+      return;
+    }
+    const found = PROMPT_PRESETS.find((p) => p.id === id);
+    if (found) {
+      composePromptEl.value = found.text;
+      await chrome.storage.local.set({ apiConfig: { ...(apiConfig || {}), promptPreset: id, prompt: found.text } });
+    }
+  });
+}
+
+// When user edits prompt manually, mark as custom unless exactly matches a preset
+composePromptEl.addEventListener('input', async () => {
+  if (!promptPresetEl) return;
+  const current = composePromptEl.value;
+  const matched = PROMPT_PRESETS.find((p) => p.text === current);
+  const id = matched ? matched.id : 'custom';
+  if (promptPresetEl.value !== id) {
+    promptPresetEl.value = id;
+    const { apiConfig } = await chrome.storage.local.get('apiConfig');
+    await chrome.storage.local.set({ apiConfig: { ...(apiConfig || {}), prompt: current, promptPreset: id } });
+  }
 });
 
 function getBase64FromDataUrl(dataUrl) {
@@ -358,7 +461,7 @@ async function composeImages() {
     const { mime: baseMime, base64: baseB64 } = mimeAndBase64FromDataUrl(baseDataUrl);
     const { mime: overlayMime, base64: overlayB64 } = mimeAndBase64FromDataUrl(overlayDataUrl);
     const parts = [];
-    if (prompt) parts.push({ text: prompt + '。必需輸出圖片。' });
+    if (prompt) parts.push({ text: prompt + '。必需輸出圖片! Must output an image!' });
     parts.push({ inline_data: { mime_type: baseMime, data: baseB64 } });
     parts.push({ inline_data: { mime_type: overlayMime, data: overlayB64 } });
     const payload = { contents: [{ role: 'user', parts }] };
