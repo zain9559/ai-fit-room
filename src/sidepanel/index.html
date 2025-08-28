@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-Hant">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Fit Room - Side Panel</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      margin: 0;
+    }
+
+    header {
+      padding: 12px 16px;
+      font-weight: 600;
+      border-bottom: 1px solid #ccc;
+    }
+
+    main {
+      padding: 12px 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .box {
+      padding: 12px;
+      border: 1px solid #8884;
+      border-radius: 8px;
+      background: #fff2;
+    }
+
+    .muted {
+      color: #666;
+      font-size: 12px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 96px;
+      resize: vertical;
+    }
+
+    button {
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid #8884;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+  <header>AI Fit Room</header>
+  <main>
+    <section class="box">
+      <label>提示詞（Prompt）
+        <textarea id="compose-prompt" placeholder="請將右鍵圖片自然合成到基底上，保持真實感與光影一致。"
+          style="width:100%; min-height: 64px;"></textarea>
+      </label>
+      <button id="compose-btn">合成圖片</button>
+    </section>
+    <section class="box">
+      <div id="compose-status" class="muted"></div>
+      <img id="compose-result" alt="合成結果"
+        style="display:none; max-width:100%; height:auto; border-radius:6px; border:1px solid #8884;" />
+      <div id="compose-actions" style="display:none; gap:8px; margin-top:8px;">
+        <button id="copy-compose-base64">下載圖片</button>
+        <button id="copy-compose-image">複製圖片</button>
+      </div>
+    </section>
+    <section id="image-upload-wrap" class="box">
+      <div class="muted">圖片上傳與預覽</div>
+      <div id="image-upload-inner">
+        <input id="image-input" type="file" accept="image/*" />
+        <div id="image-preview-wrap" style="display:none; margin-top:8px;">
+          <img id="image-preview" alt="預覽"
+            style="max-width:100%; height:auto; border-radius:6px; border:1px solid #8884;" />
+          <div class="muted" id="image-meta" style="margin-top:6px;"></div>
+          <div style="display:flex; gap:8px; margin-top:8px; flex-wrap: wrap;">
+            <button id="paste-image">從剪貼簿貼上圖片</button>
+            <button id="clear-image">清除圖片</button>
+          </div>
+          <div class="muted" style="margin-top:6px;">提示：在此面板按 Cmd/Ctrl+V 也可直接貼上圖片</div>
+        </div>
+      </div>
+    </section>
+    <section id="context-imported-section" class="box" style="display:none;">
+      <div class="muted">自動載入的圖片（來自右鍵）</div>
+      <div id="context-imported-src" class="muted" style="word-break: break-all; margin-top:6px;"></div>
+      <img id="context-imported-img" alt="自動載入預覽"
+        style="max-width:100%; height:auto; border-radius:6px; border:1px solid #8884; margin-top:8px;" />
+      <div class="muted" id="context-imported-meta" style="margin-top:6px;"></div>
+      <div style="display:flex; gap:8px; margin-top:8px; flex-wrap: wrap;">
+        <button id="copy-context-base64">複製 Base64</button>
+        <button id="copy-context-image">複製圖片</button>
+        <button id="clear-context-image">清除圖片</button>
+      </div>
+    </section>
+
+    <section id="compose-section" class="box">
+      <div class="muted">合成（Google AI 後端）</div>
+      <div style="display:grid; gap:8px; margin-top:8px;">
+        <label>API Endpoint
+          <input id="api-endpoint" type="url"
+            value="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent"
+            style="width:100%;">
+        </label>
+        <label>API Key（Google Gemini）
+          <input id="api-key" type="password" placeholder="在 Google AI Studio 取得 API 金鑰" style="width:100%;" />
+        </label>
+
+        <button id="save-api">儲存設定</button>
+
+
+      </div>
+    </section>
+
+  </main>
+  <script src="./index.js" type="module"></script>
+</body>
+
+</html>

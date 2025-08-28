@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "AI Fit Room",
+  "version": "0.1.0",
+  "description": "Chrome extension using sidePanel and contextMenus.",
+  "permissions": [
+    "sidePanel",
+    "contextMenus",
+    "storage",
+    "clipboardWrite",
+    "clipboardRead"
+  ],
+  "host_permissions": [
+    "https://generativelanguage.googleapis.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background/background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "src/sidepanel/index.html"
+  },
+  "action": {
+    "default_title": "AI Fit Room"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "src/content/content_script.js"
+      ]
+    }
+  ]
+}
