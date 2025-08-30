@@ -201,6 +201,7 @@ async function render() {
         ['top', '上衣'],
         ['outer', '外套'],
         ['bottom', '下裝'],
+        ['pants', '褲子'],
         ['shoes', '鞋子'],
         ['bag', '包包'],
         ['accessory', '配件'],
@@ -217,9 +218,9 @@ async function render() {
 
         const partsText = [];
         if (arr.length) {
-          const labels = { hair: '髮型', top: '上衣', outer: '外套', bottom: '下裝', shoes: '鞋子', bag: '包包', accessory: '配件', jewelry: '首飾', pose: '動作', other: '其他' };
+          const labels = { hair: '髮型', top: '上衣', outer: '外套', bottom: '下裝', pants: '褲子', shoes: '鞋子', bag: '包包', accessory: '配件', jewelry: '首飾', pose: '動作', other: '其他' };
           const desc = arr.map((o, i) => `僅將圖${i + 2}中人物的${labels[o.part || 'auto']}換到我身上`).join('；');
-          const orderStr = `${arr.length + 1}張圖合成一張，圖片順序：圖1是我，不改變我的視角，保持我的臉型與體型`;
+          const orderStr = `${arr.length + 1}張圖合成一張，圖片順序：圖1是我，不改變我的視角，保持我的臉型與體態`;
           partsText.push(`${orderStr}。\n覆蓋來源項目：${desc}；邊緣無鋸齒；匹配場景光影，生成合理陰影。請依項目意圖進行合成，並輸出圖片。`);
         }
         composePromptEl.value = partsText.join('\n');
@@ -380,6 +381,30 @@ saveApiBtn.addEventListener('click', async () => {
   composeStatus.textContent = '設定已儲存';
   setTimeout(() => (composeStatus.textContent = ''), 1200);
 });
+
+// Auto-save when API Key is filled (web-friendly UX)
+{
+  let autoSaveTimer = null;
+  const tryAutoSave = async () => {
+    const key = apiKeyEl.value.trim();
+    if (!key) return; // avoid saving empty key
+    const endpoint = apiEndpointEl.value.trim();
+    const prompt = composePromptEl.value.trim();
+    const { apiConfig: prev } = await chrome.storage.local.get('apiConfig');
+    const preset = promptPresetEl ? promptPresetEl.value : ((prev && prev.promptPreset) || 'custom');
+    await chrome.storage.local.set({ apiConfig: { ...(prev || {}), endpoint, key, prompt, promptPreset: preset } });
+    if (composeStatus) {
+      composeStatus.textContent = '已自動儲存 API 設定';
+      setTimeout(() => (composeStatus.textContent = ''), 1200);
+    }
+  };
+  apiKeyEl.addEventListener('input', () => {
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(tryAutoSave, 400);
+  });
+  apiKeyEl.addEventListener('change', tryAutoSave);
+  apiKeyEl.addEventListener('blur', tryAutoSave);
+}
 
 // When user changes preset, sync prompt text and store
 if (promptPresetEl) {
