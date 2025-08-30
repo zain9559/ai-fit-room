@@ -59,11 +59,6 @@
   <main>
     <section class="box">
       <div style="display:grid; gap:8px;">
-        <label>情境模板
-          <select id="prompt-preset" style="width:100%;">
-            <option value="custom">自訂（不套用模板）</option>
-          </select>
-        </label>
         <label>提示詞（Prompt）
           <textarea id="compose-prompt" placeholder="請將右鍵圖片自然合成到基底上，保持真實感與光影一致。"
             style="width:100%; min-height: 64px;"></textarea>
@@ -85,28 +80,29 @@
       <div id="image-upload-inner">
         <input id="image-input" type="file" accept="image/*" />
         <div id="image-preview-wrap" style="display:none; margin-top:8px;">
-          <img id="image-preview" alt="預覽"
-            style="max-width:100%; height:auto; border-radius:6px; border:1px solid #8884;" />
-          <div class="muted" id="image-meta" style="margin-top:6px;"></div>
-          <div style="display:flex; gap:8px; margin-top:8px; flex-wrap: wrap;">
-            <button id="paste-image">從剪貼簿貼上圖片</button>
-            <button id="clear-image">清除圖片</button>
+          <div style="display:grid; grid-template-columns: 96px 1fr; gap:12px; align-items:start;">
+            <img id="image-preview" alt="預覽"
+              style="width:96px; height:auto; border-radius:6px; border:1px solid #8884;" />
+            <div style="display:grid; gap:8px;">
+              <div class="muted" id="image-meta"></div>
+              <div style="display:flex; gap:8px; flex-wrap: wrap;">
+                <button id="paste-image">從剪貼簿貼上圖片</button>
+                <button id="clear-image">清除圖片</button>
+              </div>
+              <div class="muted">提示：在此面板按 Cmd/Ctrl+V 也可直接貼上圖片</div>
+            </div>
           </div>
-          <div class="muted" style="margin-top:6px;">提示：在此面板按 Cmd/Ctrl+V 也可直接貼上圖片</div>
         </div>
       </div>
     </section>
     <section id="context-imported-section" class="box" style="display:none;">
-      <div class="muted">自動載入的圖片（來自右鍵）</div>
-      <div id="context-imported-src" class="muted" style="word-break: break-all; margin-top:6px;"></div>
-      <img id="context-imported-img" alt="自動載入預覽"
-        style="max-width:100%; height:auto; border-radius:6px; border:1px solid #8884; margin-top:8px;" />
-      <div class="muted" id="context-imported-meta" style="margin-top:6px;"></div>
-      <div style="display:flex; gap:8px; margin-top:8px; flex-wrap: wrap;">
-        <button id="copy-context-base64">複製 Base64</button>
-        <button id="copy-context-image">複製圖片</button>
-        <button id="clear-context-image">清除圖片</button>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+        <div class="muted">自動載入的圖片（來自右鍵，可多張）</div>
+        <div style="display:flex; gap:8px;">
+          <button id="clear-context-all">清除全部</button>
+        </div>
       </div>
+      <div id="context-list" style="display:grid; gap:10px; margin-top:10px;"></div>
     </section>
 
     <section id="compose-section" class="box">

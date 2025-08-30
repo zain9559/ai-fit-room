@@ -8,12 +8,8 @@ async function render() {
   const pasteImageBtn = document.getElementById('paste-image');
   const clearImageBtn = document.getElementById('clear-image');
   const ctxImportedSection = document.getElementById('context-imported-section');
-  const ctxImportedImg = document.getElementById('context-imported-img');
-  const ctxImportedMeta = document.getElementById('context-imported-meta');
-  const ctxImportedSrc = document.getElementById('context-imported-src');
-  const copyContextBase64Btn = document.getElementById('copy-context-base64');
-  const copyContextImageBtn = document.getElementById('copy-context-image');
-  const clearContextImageBtn = document.getElementById('clear-context-image');
+  const ctxList = document.getElementById('context-list');
+  const clearContextAllBtn = document.getElementById('clear-context-all');
   // compose UI is handled by top-level handlers
 
   // Load previously saved image (if any)
@@ -26,16 +22,8 @@ async function render() {
 
   // Load context image info (if any)
   const { lastImageContext } = await chrome.storage.local.get('lastImageContext');
-  // Load previously saved overlay image and render it
-  {
-    const { overlayImage } = await chrome.storage.local.get('overlayImage');
-    if (overlayImage?.dataUrl) {
-      ctxImportedImg.src = overlayImage.dataUrl;
-      ctxImportedSection.style.display = 'block';
-      ctxImportedMeta.textContent = `${overlayImage.name || 'overlay'} · ${overlayImage.type || ''}`;
-      ctxImportedSrc.textContent = overlayImage.srcUrl || '';
-    }
-  }
+  // Render previously saved overlay images list
+  await renderOverlayList();
 
   // Handle new image uploads
   imageInput.addEventListener('change', () => {
@@ -128,21 +116,17 @@ async function render() {
         r.onerror = reject;
         r.readAsDataURL(blob);
       });
-      // Persist as separate overlay image (do not overwrite base upload)
-      await chrome.storage.local.set({ overlayImage: { name: 'from-context', type: blob.type, dataUrl, srcUrl } });
-      // Render only in the context section
-      ctxImportedImg.src = dataUrl;
-      ctxImportedSection.style.display = 'block';
-      ctxImportedMeta.textContent = `from-context · ${blob.type} · ${Math.round(blob.size / 1024)} KB`;
-      ctxImportedSrc.textContent = srcUrl;
+      // Append to overlayImages array (do not overwrite base upload)
+      const id = `ov_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const { overlayImages } = await chrome.storage.local.get('overlayImages');
+      const next = Array.isArray(overlayImages) ? overlayImages.slice() : [];
+      next.push({ id, name: 'from-context', type: blob.type, dataUrl, srcUrl, part: 'auto' });
+      await chrome.storage.local.set({ overlayImages: next });
+      await renderOverlayList();
       // Clear context to avoid repeated auto-imports
       await chrome.storage.local.remove('lastImageContext');
-      // Auto-compose if prerequisites satisfied
-      autoComposeIfReady();
     } catch (e) {
       ctxImportedSection.style.display = 'block';
-      ctxImportedMeta.textContent = '無法取得圖片（可能受跨網域限制）';
-      ctxImportedSrc.textContent = srcUrl || '';
     }
   }
 
@@ -156,75 +140,121 @@ async function render() {
     if (ctx && ctx.newValue && ctx.newValue.srcUrl) {
       importFromContext();
     }
-    // React to overlayImage updates (set or clear)
-    if (changes.overlayImage) {
-      const val = changes.overlayImage.newValue;
-      if (val && val.dataUrl) {
-        ctxImportedImg.src = val.dataUrl;
-        ctxImportedSection.style.display = 'block';
-        ctxImportedMeta.textContent = `${val.name || 'overlay'} · ${val.type || ''}`;
-        ctxImportedSrc.textContent = val.srcUrl || '';
-        autoComposeIfReady();
-      } else {
-        ctxImportedImg.removeAttribute('src');
-        ctxImportedSection.style.display = 'none';
-        ctxImportedMeta.textContent = '';
-        ctxImportedSrc.textContent = '';
-      }
+    // React to overlayImages updates
+    if (changes.overlayImages) {
+      await renderOverlayList();
     }
   });
 
-  async function autoComposeIfReady() {
-    try {
-      const { lastImage, overlayImage, apiConfig } = await chrome.storage.local.get([
-        'lastImage',
-        'overlayImage',
-        'apiConfig'
-      ]);
-      const hasBase = !!lastImage?.dataUrl;
-      const hasOverlay = !!overlayImage?.dataUrl || !!(ctxImportedImg.getAttribute('src') || '').startsWith('data:');
-      const hasApi = !!(apiConfig?.endpoint && apiConfig?.key);
-      if (hasBase && hasOverlay && hasApi) {
-        composeImages();
-      }
-    } catch { }
+  // Clear all overlay images
+  clearContextAllBtn.addEventListener('click', async () => {
+    await chrome.storage.local.remove(['overlayImages', 'lastImageContext']);
+    await renderOverlayList();
+  });
+
+  // Render overlay list from storage
+  async function renderOverlayList() {
+    const { overlayImages } = await chrome.storage.local.get('overlayImages');
+    const list = Array.isArray(overlayImages) ? overlayImages : [];
+    ctxList.innerHTML = '';
+    if (!list.length) {
+      ctxImportedSection.style.display = 'none';
+      return;
+    }
+    ctxImportedSection.style.display = 'block';
+    for (const item of list) {
+      const wrap = document.createElement('div');
+      wrap.style.border = '1px solid #8884';
+      wrap.style.borderRadius = '8px';
+      wrap.style.padding = '8px';
+      wrap.style.display = 'grid';
+      wrap.style.gap = '6px';
+      wrap.dataset.id = item.id;
+
+      const row = document.createElement('div');
+      row.style.display = 'grid';
+      row.style.gridTemplateColumns = '96px 1fr';
+      row.style.gap = '10px';
+
+      const img = document.createElement('img');
+      img.src = item.dataUrl;
+      img.style.maxWidth = '96px';
+      img.style.height = 'auto';
+      img.style.borderRadius = '6px';
+      img.style.border = '1px solid #8884';
+
+      const meta = document.createElement('div');
+      meta.style.display = 'grid';
+      meta.style.gap = '6px';
+      const srcLine = document.createElement('div');
+      srcLine.className = 'muted';
+      srcLine.style.wordBreak = 'break-all';
+      srcLine.textContent = item.srcUrl || '';
+
+      const partWrap = document.createElement('label');
+      partWrap.textContent = '參考部位：';
+      const select = document.createElement('select');
+      select.innerHTML = [
+        ['hair', '髮型'],
+        ['top', '上衣'],
+        ['outer', '外套'],
+        ['bottom', '下裝'],
+        ['shoes', '鞋子'],
+        ['bag', '包包'],
+        ['accessory', '配件'],
+        ['jewelry', '首飾'],
+        ['pose', '動作'],
+        ['other', '其他']
+      ].map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+      select.value = item.part || 'auto';
+      select.addEventListener('change', async () => {
+        const { overlayImages } = await chrome.storage.local.get('overlayImages');
+        const arr = Array.isArray(overlayImages) ? overlayImages : [];
+        const idx = arr.findIndex((x) => x.id === item.id);
+        if (idx >= 0) { arr[idx].part = select.value; await chrome.storage.local.set({ overlayImages: arr }); }
+
+        const partsText = [];
+        if (arr.length) {
+          const labels = { hair: '髮型', top: '上衣', outer: '外套', bottom: '下裝', shoes: '鞋子', bag: '包包', accessory: '配件', jewelry: '首飾', pose: '動作', other: '其他' };
+          const desc = arr.map((o, i) => `將圖${i + 2}中的${labels[o.part || 'auto']}換到我身上`).join('；');
+          const orderStr = `${arr.length + 1}張圖合成一張，圖片順序：圖1是我，不改變我的視角，保持我的臉型與體型`;
+          partsText.push(`${orderStr}。\n覆蓋來源項目：${desc}；邊緣無鋸齒；匹配場景光影，生成合理陰影。請依項目意圖進行合成，並輸出圖片。`);
+        }
+        composePromptEl.value = partsText.join('\n');
+      });
+      partWrap.appendChild(select);
+
+      const btns = document.createElement('div');
+      btns.style.display = 'flex';
+      btns.style.gap = '8px';
+      btns.style.flexWrap = 'wrap';
+
+      const copyImg = document.createElement('button');
+      copyImg.textContent = '複製圖片';
+      copyImg.addEventListener('click', async () => {
+        try { const blob = dataUrlToBlob(item.dataUrl); await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]); copyImg.textContent = '已複製圖片'; setTimeout(() => copyImg.textContent = '複製圖片', 1200); } catch { }
+      });
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '刪除';
+      delBtn.addEventListener('click', async () => {
+        const { overlayImages } = await chrome.storage.local.get('overlayImages');
+        const arr = Array.isArray(overlayImages) ? overlayImages : [];
+        const next = arr.filter((x) => x.id !== item.id);
+        await chrome.storage.local.set({ overlayImages: next });
+        await renderOverlayList();
+      });
+      btns.appendChild(copyImg);
+      btns.appendChild(delBtn);
+
+      meta.appendChild(srcLine);
+      meta.appendChild(partWrap);
+      meta.appendChild(btns);
+      row.appendChild(img);
+      row.appendChild(meta);
+      wrap.appendChild(row);
+      ctxList.appendChild(wrap);
+    }
   }
-  copyContextBase64Btn.addEventListener('click', async () => {
-    const src = ctxImportedImg.getAttribute('src') || '';
-    if (!src) return;
-    const base64 = src.slice(src.indexOf(',') + 1);
-    try {
-      await navigator.clipboard.writeText(base64);
-      copyContextBase64Btn.textContent = '已複製';
-      setTimeout(() => (copyContextBase64Btn.textContent = '複製 Base64'), 1200);
-    } catch {
-      copyContextBase64Btn.textContent = '複製失敗';
-      setTimeout(() => (copyContextBase64Btn.textContent = '複製 Base64'), 1200);
-    }
-  });
-
-  copyContextImageBtn.addEventListener('click', async () => {
-    const src = ctxImportedImg.getAttribute('src') || '';
-    if (!src.startsWith('data:')) return;
-    try {
-      const blob = dataUrlToBlob(src);
-      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-      copyContextImageBtn.textContent = '已複製圖片';
-      setTimeout(() => (copyContextImageBtn.textContent = '複製圖片'), 1200);
-    } catch {
-      copyContextImageBtn.textContent = '複製失敗';
-      setTimeout(() => (copyContextImageBtn.textContent = '複製圖片'), 1200);
-    }
-  });
-
-  // Clear only the right-click imported (overlay) image
-  clearContextImageBtn.addEventListener('click', async () => {
-    await chrome.storage.local.remove(['overlayImage', 'lastImageContext']);
-    ctxImportedImg.removeAttribute('src');
-    ctxImportedSection.style.display = 'none';
-    ctxImportedMeta.textContent = '';
-    ctxImportedSrc.textContent = '';
-  });
 
 }
 
@@ -234,7 +264,6 @@ document.addEventListener('DOMContentLoaded', render);
 const apiEndpointEl = document.getElementById('api-endpoint');
 const apiKeyEl = document.getElementById('api-key');
 const composePromptEl = document.getElementById('compose-prompt');
-const promptPresetEl = document.getElementById('prompt-preset');
 const saveApiBtn = document.getElementById('save-api');
 const composeBtn = document.getElementById('compose-btn');
 const composeStatus = document.getElementById('compose-status');
@@ -259,12 +288,6 @@ function dataUrlToBlob(dataUrl) {
 
 // 預設「試衣間」情境模板
 const PROMPT_PRESETS = [
-  {
-    id: 'basic-compose',
-    label: '基本合成（自然貼合）',
-    text:
-      '第一張為基底圖，第二張之後為覆蓋圖，將覆蓋圖的主體自然合成到第一張我照片上。請自動去背、對齊比例與角度，避免變形；匹配光源方向、色溫與對比，生成合理陰影與接縫；邊緣平滑無鋸齒，避免重影或殘影，整體看起來真實自然。'
-  },
   {
     id: 'tshirt',
     label: '換上 T 恤',
@@ -315,16 +338,6 @@ const PROMPT_PRESETS = [
   }
 ];
 
-// 將模板選項填入下拉選單
-if (promptPresetEl) {
-  for (const p of PROMPT_PRESETS) {
-    const opt = document.createElement('option');
-    opt.value = p.id;
-    opt.textContent = p.label;
-    promptPresetEl.appendChild(opt);
-  }
-}
-
 
 // Load API config
 {
@@ -333,14 +346,6 @@ if (promptPresetEl) {
     if (apiConfig.endpoint) apiEndpointEl.value = apiConfig.endpoint;
     if (apiConfig.key) apiKeyEl.value = apiConfig.key;
     if (apiConfig.prompt) composePromptEl.value = apiConfig.prompt;
-    if (promptPresetEl) {
-      const sel = apiConfig.promptPreset || 'custom';
-      promptPresetEl.value = sel;
-      const found = PROMPT_PRESETS.find((p) => p.id === sel);
-      if (found && (!apiConfig.prompt || apiConfig.prompt === found.text)) {
-        composePromptEl.value = found.text;
-      }
-    }
   }
 }
 
@@ -348,40 +353,9 @@ saveApiBtn.addEventListener('click', async () => {
   const endpoint = apiEndpointEl.value.trim();
   const key = apiKeyEl.value.trim();
   const prompt = composePromptEl.value.trim();
-  const promptPreset = promptPresetEl ? promptPresetEl.value : 'custom';
   await chrome.storage.local.set({ apiConfig: { endpoint, key, prompt, promptPreset } });
   composeStatus.textContent = '設定已儲存';
   setTimeout(() => (composeStatus.textContent = ''), 1200);
-});
-
-// Handle preset selection change
-if (promptPresetEl) {
-  promptPresetEl.addEventListener('change', async () => {
-    const id = promptPresetEl.value;
-    const { apiConfig } = await chrome.storage.local.get('apiConfig');
-    if (id === 'custom') {
-      await chrome.storage.local.set({ apiConfig: { ...(apiConfig || {}), promptPreset: 'custom', prompt: composePromptEl.value } });
-      return;
-    }
-    const found = PROMPT_PRESETS.find((p) => p.id === id);
-    if (found) {
-      composePromptEl.value = found.text;
-      await chrome.storage.local.set({ apiConfig: { ...(apiConfig || {}), promptPreset: id, prompt: found.text } });
-    }
-  });
-}
-
-// When user edits prompt manually, mark as custom unless exactly matches a preset
-composePromptEl.addEventListener('input', async () => {
-  if (!promptPresetEl) return;
-  const current = composePromptEl.value;
-  const matched = PROMPT_PRESETS.find((p) => p.text === current);
-  const id = matched ? matched.id : 'custom';
-  if (promptPresetEl.value !== id) {
-    promptPresetEl.value = id;
-    const { apiConfig } = await chrome.storage.local.get('apiConfig');
-    await chrome.storage.local.set({ apiConfig: { ...(apiConfig || {}), prompt: current, promptPreset: id } });
-  }
 });
 
 function getBase64FromDataUrl(dataUrl) {
@@ -431,45 +405,29 @@ async function composeImages() {
     const { apiConfig } = await chrome.storage.local.get('apiConfig');
     const endpoint = apiConfig?.endpoint || '';
     const key = apiConfig?.key || '';
-    const prompt = (composePromptEl?.value || apiConfig?.prompt || '').trim();
+    const prompt = (composePromptEl?.value || '').trim();
     const { lastImage } = await chrome.storage.local.get('lastImage');
     const baseDataUrl = lastImage?.dataUrl;
-    // Prefer the already imported overlay from preview; fallback to lastImageContext fetch
-    let overlayDataUrl = (document.getElementById('context-imported-img').getAttribute('src') || '');
-    if (!overlayDataUrl || !overlayDataUrl.startsWith('data:')) {
-      const { lastImageContext } = await chrome.storage.local.get('lastImageContext');
-      const overlaySrcUrl = lastImageContext?.srcUrl;
-      if (overlaySrcUrl) {
-        const res = await fetch(overlaySrcUrl, { mode: 'cors' });
-        if (!res.ok) throw new Error(`overlay HTTP ${res.status}`);
-        const overlayBlob = await res.blob();
-        overlayDataUrl = await new Promise((resolve, reject) => {
-          const r = new FileReader();
-          r.onload = () => resolve(String(r.result || ''));
-          r.onerror = reject;
-          r.readAsDataURL(overlayBlob);
-        });
-      }
-    }
+    const { overlayImages } = await chrome.storage.local.get('overlayImages');
+    const overlays = (Array.isArray(overlayImages) ? overlayImages : []).filter((x) => x?.dataUrl);
 
-    // Also check persisted overlay image from storage
-    if (!overlayDataUrl || !overlayDataUrl.startsWith('data:')) {
-      const { overlayImage } = await chrome.storage.local.get('overlayImage');
-      if (overlayImage?.dataUrl) overlayDataUrl = overlayImage.dataUrl;
-    }
-
-    if (!endpoint || !key || !baseDataUrl || !overlayDataUrl) {
-      composeStatus.textContent = '缺少設定或圖片（需 API Key、Endpoint、基底與右鍵圖片）';
+    if (!endpoint || !key || !baseDataUrl || overlays.length === 0) {
+      composeStatus.textContent = '缺少設定或圖片（需 API Key、Endpoint、基底與至少一張右鍵圖片）';
       return;
     }
 
-    // Build Google Gemini generateContent payload
+    // Build Google Gemini generateContent payload（多覆蓋圖）
     const { mime: baseMime, base64: baseB64 } = mimeAndBase64FromDataUrl(baseDataUrl);
-    const { mime: overlayMime, base64: overlayB64 } = mimeAndBase64FromDataUrl(overlayDataUrl);
     const parts = [];
-    if (prompt) parts.push({ text: '生成一張圖片，' + prompt + '。必需優先輸出圖片! Must first output an image!' });
+
+    parts.push({ text: prompt });
+    // 先放基底圖
     parts.push({ inline_data: { mime_type: baseMime, data: baseB64 } });
-    parts.push({ inline_data: { mime_type: overlayMime, data: overlayB64 } });
+    // 依序放入所有覆蓋圖
+    for (const o of overlays) {
+      const { mime, base64 } = mimeAndBase64FromDataUrl(o.dataUrl);
+      parts.push({ inline_data: { mime_type: mime, data: base64 } });
+    }
     const payload = { contents: [{ role: 'user', parts }] };
 
     // Append API key as query param (per Google REST docs)
