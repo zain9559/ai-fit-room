@@ -157,8 +157,10 @@ async function render() {
     const { overlayImages } = await chrome.storage.local.get('overlayImages');
     const list = Array.isArray(overlayImages) ? overlayImages : [];
     ctxList.innerHTML = '';
+    const isWeb = !!document.getElementById('choose-overlay');
     if (!list.length) {
-      ctxImportedSection.style.display = 'none';
+      // In web mode keep the section visible so user can add overlays
+      ctxImportedSection.style.display = isWeb ? 'block' : 'none';
       return;
     }
     ctxImportedSection.style.display = 'block';
@@ -216,7 +218,7 @@ async function render() {
         const partsText = [];
         if (arr.length) {
           const labels = { hair: '髮型', top: '上衣', outer: '外套', bottom: '下裝', shoes: '鞋子', bag: '包包', accessory: '配件', jewelry: '首飾', pose: '動作', other: '其他' };
-          const desc = arr.map((o, i) => `將圖${i + 2}中的${labels[o.part || 'auto']}換到我身上`).join('；');
+          const desc = arr.map((o, i) => `僅將圖${i + 2}中人物的${labels[o.part || 'auto']}換到我身上`).join('；');
           const orderStr = `${arr.length + 1}張圖合成一張，圖片順序：圖1是我，不改變我的視角，保持我的臉型與體型`;
           partsText.push(`${orderStr}。\n覆蓋來源項目：${desc}；邊緣無鋸齒；匹配場景光影，生成合理陰影。請依項目意圖進行合成，並輸出圖片。`);
         }
@@ -264,6 +266,7 @@ document.addEventListener('DOMContentLoaded', render);
 const apiEndpointEl = document.getElementById('api-endpoint');
 const apiKeyEl = document.getElementById('api-key');
 const composePromptEl = document.getElementById('compose-prompt');
+const promptPresetEl = document.getElementById('prompt-preset');
 const saveApiBtn = document.getElementById('save-api');
 const composeBtn = document.getElementById('compose-btn');
 const composeStatus = document.getElementById('compose-status');
@@ -339,6 +342,16 @@ const PROMPT_PRESETS = [
 ];
 
 
+// Initialize prompt preset options (if the select exists on this page)
+if (promptPresetEl) {
+  for (const p of PROMPT_PRESETS) {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.label;
+    promptPresetEl.appendChild(opt);
+  }
+}
+
 // Load API config
 {
   const { apiConfig } = await chrome.storage.local.get('apiConfig');
@@ -346,6 +359,14 @@ const PROMPT_PRESETS = [
     if (apiConfig.endpoint) apiEndpointEl.value = apiConfig.endpoint;
     if (apiConfig.key) apiKeyEl.value = apiConfig.key;
     if (apiConfig.prompt) composePromptEl.value = apiConfig.prompt;
+    if (promptPresetEl) {
+      const sel = apiConfig.promptPreset || 'custom';
+      promptPresetEl.value = sel;
+      const found = PROMPT_PRESETS.find((p) => p.id === sel);
+      if (found && (!apiConfig.prompt || apiConfig.prompt === found.text)) {
+        composePromptEl.value = found.text;
+      }
+    }
   }
 }
 
@@ -353,10 +374,40 @@ saveApiBtn.addEventListener('click', async () => {
   const endpoint = apiEndpointEl.value.trim();
   const key = apiKeyEl.value.trim();
   const prompt = composePromptEl.value.trim();
-  await chrome.storage.local.set({ apiConfig: { endpoint, key, prompt, promptPreset } });
+  const { apiConfig: prev } = await chrome.storage.local.get('apiConfig');
+  const preset = promptPresetEl ? promptPresetEl.value : ((prev && prev.promptPreset) || 'custom');
+  await chrome.storage.local.set({ apiConfig: { ...(prev || {}), endpoint, key, prompt, promptPreset: preset } });
   composeStatus.textContent = '設定已儲存';
   setTimeout(() => (composeStatus.textContent = ''), 1200);
 });
+
+// When user changes preset, sync prompt text and store
+if (promptPresetEl) {
+  promptPresetEl.addEventListener('change', async () => {
+    const id = promptPresetEl.value;
+    const { apiConfig } = await chrome.storage.local.get('apiConfig');
+    if (id === 'custom') {
+      await chrome.storage.local.set({ apiConfig: { ...(apiConfig || {}), promptPreset: 'custom', prompt: composePromptEl.value } });
+      return;
+    }
+    const found = PROMPT_PRESETS.find((p) => p.id === id);
+    if (found) {
+      composePromptEl.value = found.text;
+      await chrome.storage.local.set({ apiConfig: { ...(apiConfig || {}), promptPreset: id, prompt: found.text } });
+    }
+  });
+  // If user edits prompt manually, mark as custom unless exactly matches a preset
+  composePromptEl.addEventListener('input', async () => {
+    const current = composePromptEl.value;
+    const matched = PROMPT_PRESETS.find((p) => p.text === current);
+    const id = matched ? matched.id : 'custom';
+    if (promptPresetEl.value !== id) {
+      promptPresetEl.value = id;
+      const { apiConfig } = await chrome.storage.local.get('apiConfig');
+      await chrome.storage.local.set({ apiConfig: { ...(apiConfig || {}), prompt: current, promptPreset: id } });
+    }
+  });
+}
 
 function getBase64FromDataUrl(dataUrl) {
   const comma = dataUrl.indexOf(',');
